@@ -1,0 +1,14 @@
+Package: SurrogateBMA
+Type: Package
+Title: Flexible Evaluation of Surrogate Markers with Bayesian Model Averaging
+Version: 1.0
+Date: 2023-04-20
+Author: Yunshan Duan
+Maintainer: Yunshan Duan <yunshan@utexas.edu>
+Description: Provides functions to estimate the proportion of treatment effect explained by the surrogate marker using Bayesian Model Averaging approach.
+License: GPL (>= 2)
+Imports: Rcpp (>= 1.0.9), MCMCpack, mvtnorm
+LinkingTo: Rcpp, RcppEigen, RcppNumerical
+Depends: 
+    R (>= 3.5.0)
+LazyData: true
