@@ -1,2 +1,2 @@
 # SurrogateBMA
- R package for SurrogateBMA
+ Source code for the R package SurrogateBMA
