@@ -7,7 +7,7 @@ Author: Yunshan Duan
 Maintainer: Yunshan Duan <yunshan@utexas.edu>
 Description: Provides functions to estimate the proportion of treatment effect explained by the surrogate marker using Bayesian Model Averaging approach.
 License: GPL (>= 2)
-Imports: Rcpp (>= 1.0.9), MCMCpack, mvtnorm
+Imports: Rcpp (>= 1.0.9), MCMCpack, mvtnorm, Rsurrogate
 LinkingTo: Rcpp, RcppEigen, RcppNumerical
 Depends: 
     R (>= 3.5.0)

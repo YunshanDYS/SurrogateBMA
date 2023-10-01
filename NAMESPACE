@@ -1,6 +1,7 @@
 useDynLib(SurrogateBMA, .registration=TRUE)
 importFrom(Rcpp, evalCpp)
-importFrom("stats", "quantile", "sd")
+importFrom("stats", "quantile", "sd",  "bw.nrd", "dnorm", "integrate", "na.omit")
 importFrom("MCMCpack", "rdirichlet", "rinvgamma")
 importFrom("mvtnorm", "dmvt", "rmvnorm")
+importFrom("Rsurrogate", "R.s.estimate", "pred.smooth")
 exportPattern("^[[:alpha:]]+")

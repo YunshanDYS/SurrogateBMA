@@ -191,16 +191,60 @@ post.model <- function(Y, S, A, prior.para = NULL) {
   return(p.model)
 }
 
-# Function R.BMA
-R.BMA.est <- function(Y, S, A, 
-                      nmc = 500, nBB = 100, conf.int = TRUE, alpha = 0.05,
-                      prior.para =  NULL) {
+# Function R.BMA.est
+R.BMA.est <- function(Y, S, A, method = "BMA",
+                      nmc = 500, nBB = 100, conf.int = TRUE, alpha = 0.05, prior.para =  NULL, kfold.k = 3) {
+  if (method == "BMA") {
+    R.BMAonly.out <- R.BMAonly(Y, S, A, 
+                     nmc = nmc, nBB = nBB, conf.int = conf.int, alpha = alpha, prior.para =  prior.para)
+    out <- list(R.est = R.BMAonly.out$R.est, p.model = R.BMAonly.out$p.model, ci = R.BMAonly.out$ci)
+  } else if (method == "robust") {
+    # cross validation
+    MSE_BMA_vec <- MSE_np_vec <- rep(NA, kfold.k)
+    ind_kfold <- sample(1:kfold.k, size = length(Y), replace = TRUE)
+    for (k in 1:kfold.k) {
+      train_ind <- which(ind_kfold != k)
+      test_ind <- which(ind_kfold == k)
+      if (length(which(A[test_ind] == 1)) > 0) {
+        MSE_BMA_vec[k] <- R.BMAonly(Y[train_ind], S[train_ind], A = A[train_ind], 
+                                    nmc = nmc, nBB = nBB, conf.int = conf.int, alpha = alpha, prior.para =  prior.para,
+                                    testdata = TRUE, Ytest = Y[test_ind], Stest = S[test_ind], Atest = A[test_ind])$MSE
+        MSE_np_vec[k] <- cv.np(Y[train_ind], S[train_ind], A = A[train_ind], 
+                               Ytest = Y[test_ind], Stest = S[test_ind], Atest = A[test_ind])
+      } else {
+        MSE_BMA_vec[k] <- MSE_np_vec[k] <- 0
+      }
+      
+    }
+    MSE_BMA <- mean(MSE_BMA_vec)
+    MSE_np <- mean(MSE_np_vec)
+    # choose from BMA and non-parametric methods
+    if (MSE_BMA > MSE_np) {
+      # choose np
+      np_out <- R.s.estimate(sone = S[which(A == 1)], szero = S[which(A == 0)],
+                             yone = Y[which(A == 1)], yzero = Y[which(A == 0)], conf.int = T, extrapolate = T)
+      out <- list(R.est = np_out$R.s, p.model = NULL, ci = np_out$conf.int.quantile.R.s)
+    } else {
+      # choose BMA
+      R.BMAonly.out <- R.BMAonly(Y, S, A, 
+                       nmc = nmc, nBB = nBB, conf.int = conf.int, alpha = alpha, prior.para =  prior.para)
+      out <- list(R.est = R.BMAonly.out$R.est, p.model = R.BMAonly.out$p.model, ci = R.BMAonly.out$ci)
+    }
+  }
+  return(out)
+}
+
+# Function R.BMAonly
+R.BMAonly <- function(Y, S, A, 
+                      nmc = 500, nBB = 100, conf.int = TRUE, alpha = 0.05, prior.para =  NULL, 
+                      testdata = FALSE, Ytest = NULL, Stest = NULL, Atest = NULL) {
   M <- 5 # num of candidate models
   # store output
   R_BMA_m <- rep(NA, M)
   p.model <- rep(NA, M)
   # calculate posterior prob of the models being true
-  p.model <- post.model(Y, S, A, prior.para)
+  postmodel_out <- post.model(Y, S, A, prior.para)
+  p.model <- postmodel_out
   # init
   n_samples_v <- round(p.model * nmc * nBB) # num of posterior samples in BB
   n <- length(A)
@@ -208,11 +252,11 @@ R.BMA.est <- function(Y, S, A,
   n1 <- length(which(A == 1))
   Rsamples <- c()
   SA <- cbind(S, A)
+  Ypred <- c()
   for (m in 1:M){
     R_BMA_post <- rep(NA, nmc)
     R_BMA_post_weighted <- c()
     if (p.model[m] < 1e-6){
-      # avoid unnecessary calculation
       R_BMA_m[m] <- 0.5
     }else{
       theta_out <- post.theta(Y, S, A, m, nmc = nmc, prior.para = prior.para)
@@ -230,14 +274,75 @@ R.BMA.est <- function(Y, S, A,
           Rsamples <- c(Rsamples, R_BMA_post_weighted[sample(1:(nmc*nBB), n_samples_v[m])])
         }
       }
+      if (testdata) {
+        Ypred_temp <- apply(theta_out, 1, pred.func, ST = Stest[which(Atest == 1)], m = m)
+        Ypred <- cbind(Ypred, Ypred_temp)
+      }
     }
   }
-  R.BMA <- sum(p.model*R_BMA_m)
+  if (testdata) {
+    Ypred <- apply(Ypred, 1, mean)
+    MSE <- mean((Ypred - Ytest[which(Atest == 1)])^2)
+  } else {
+    MSE = NULL
+  }
+  R.est <- sum(p.model*R_BMA_m)
   ci <- NULL
   if (conf.int) {
     ci <- quantile(Rsamples, c((alpha / 2), (1 - alpha / 2)))
   }
-  return(list(R.BMA = R.BMA, p.model = p.model, ci = ci))
+  return(list(R.est = R.est, p.model = p.model, ci = ci, MSE = MSE))
 }
 
+# Function to calculate the expected primary outcome in the treatment group given the model and the parameters
+pred.func <- function(theta, ST, m) {
+  if (sum(is.na(theta)) > 0) {
+    Ypred <- 0
+  } else {
+    mu_vec <- theta[2] + theta[3] + (theta[4] + theta[5])*ST
+    sig <- sqrt(theta[1])
+    Ypred <- rep(NA, length(mu_vec))
+    for (i in 1:length(mu_vec)) {
+      Ypred[i] <- integrate(fpred.int, lower =  mu_vec[i] - 3*sig, upper = mu_vec[i] + 5*sig, mu = mu_vec[i], sig = sig, m = m)$value
+    }
+  }
+  return(Ypred)
+}
+
+# Function to be integrated when calculating the expected primary outcome
+fpred.int <- function(eps, mu, sig, m) {
+  if (m == 1){
+    # Model 1: g(x) = exp(x) - 1
+    g_eps <- exp(eps) - 1
+  }else if (m == 2){
+    # Model 2: g(x) = x^2
+    g_eps <- eps^2
+  }else if (m == 3){
+    # Model 3: g(x) = x
+    g_eps <- eps
+  }else if (m == 4){
+    # Model 4: g(x) = \sqrt{x}
+    g_eps <- sqrt(eps)
+  }else if (m == 5){
+    # Model 5: g(x) = log(x + 1)
+    g_eps <- log(eps + 1)
+  }
+  g_eps * dnorm(eps, mean = mu, sd = sig) 
+}
+
+# Function to calculate prodiction MSE for nonparametric method
+cv.np <- function(Y, S, A, Ytest, Stest, Atest) {
+  sone = S[which(A == 1)]
+  yone = Y[which(A == 1)]
+  yone_test = Ytest[which(Atest == 1)]
+  yzero = Y[which(A == 0)]
+  h.select = bw.nrd(sone) * (length(sone)^(-0.25))
+  s0.new = Stest[which(Atest == 1)]
+  s1.new = sone
+  weight = rep(1, length(yone) + length(yzero))
+  mu.1.s0 = sapply(s0.new, pred.smooth, zz = s1.new, bw = h.select,
+                   y1 = yone, weight = weight[(1:length(yone))])
+  MSE.np <- mean(na.omit((mu.1.s0 - yone_test)^2))
+  return(MSE.np)
+}
 
