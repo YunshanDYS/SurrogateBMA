@@ -196,11 +196,11 @@ R.BMA.est <- function(Y, S, A, method = "BMA",
                       nmc = 500, nBB = 100, conf.int = TRUE, alpha = 0.05, prior.para =  NULL, kfold.k = 3) {
   if (min(Y) < 0) {
     Y <- Y - min(Y) + 1
-    cat("Shift Y to be positive. \n")
+    message("Shift Y to be positive. \n")
   }
   if (min(S) < 0) {
     S <- S - min(S) + 1
-    cat("Shift S to be positive. \n")
+    message("Shift S to be positive. \n")
   }
   if (method == "BMA") {
     R.BMAonly.out <- R.BMAonly(Y, S, A, 
